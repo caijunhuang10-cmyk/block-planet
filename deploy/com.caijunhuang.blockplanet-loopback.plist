@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.caijunhuang.blockplanet-loopback</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/caijunhuang/.nvm/versions/node/v24.19.0/bin/node</string>
+    <string>/Users/caijunhuang/Documents/Codex/2026-08-06/nodejs-bun-react-minecraft-demo-7897-2/deploy/loopback-proxy.mjs</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/caijunhuang/Documents/Codex/2026-08-06/nodejs-bun-react-minecraft-demo-7897-2</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/block-planet-loopback.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/block-planet-loopback.error.log</string>
+</dict>
+</plist>
