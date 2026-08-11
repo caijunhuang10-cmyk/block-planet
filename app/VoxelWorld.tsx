@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { getBlockBreakSeconds } from "./block-breaking";
+import { getNextWaterFlowCells } from "./water-flow";
 
 export type BlockKind =
   | "grass"
@@ -1491,6 +1492,7 @@ export default function VoxelWorld({
     const world = new Map<string, TerrainBlockKind>();
     const removed = new Set<string>();
     const added = new Map<string, BlockKind>();
+    const waterFlowLevels = new Map<string, number>();
     const saplingGrowth = new Map<string, number>();
     const defeatedAnimals = new Set<string>();
     const lootDropRecords = new Map<string, LootRecord>();
@@ -2134,6 +2136,22 @@ export default function VoxelWorld({
           }
         }
       }
+      if (saved?.waterFlowLevels && Array.isArray(saved.waterFlowLevels)) {
+        for (const [key, level] of saved.waterFlowLevels as [string, number][]) {
+          if (
+            world.get(key) === "water" &&
+            Number.isInteger(level) &&
+            level >= 0 &&
+            level <= 5
+          )
+            waterFlowLevels.set(key, level);
+        }
+      }
+      // Water placed by an older save becomes a source block and starts
+      // flowing after the upgrade.
+      for (const [key, kind] of added)
+        if (kind === "water" && !waterFlowLevels.has(key))
+          waterFlowLevels.set(key, 0);
       if (saved?.saplingGrowth && Array.isArray(saved.saplingGrowth)) {
         for (const [key, age] of saved.saplingGrowth as [string, number][]) {
           if (world.get(key) === "sapling" && Number.isFinite(age))
@@ -2291,7 +2309,22 @@ export default function VoxelWorld({
         dummy.rotation.set(0, 0, 0);
         dummy.scale.set(1, 1, 1);
         blocks.forEach((block, index) => {
-          dummy.position.set(block.x, block.y, block.z);
+          if (kind === "water") {
+            const level = waterFlowLevels.get(
+              blockKey(block.x, block.y, block.z),
+            );
+            const height =
+              level == null ? 0.92 : Math.max(0.2, 0.92 - level * 0.14);
+            dummy.scale.set(1, height, 1);
+            dummy.position.set(
+              block.x,
+              block.y - (1 - height) * 0.5 + 0.03,
+              block.z,
+            );
+          } else {
+            dummy.scale.set(1, 1, 1);
+            dummy.position.set(block.x, block.y, block.z);
+          }
           dummy.updateMatrix();
           mesh.setMatrixAt(index, dummy.matrix);
         });
@@ -3880,6 +3913,7 @@ export default function VoxelWorld({
         JSON.stringify({
           removed: [...removed],
           added: [...added.entries()],
+          waterFlowLevels: [...waterFlowLevels.entries()],
           saplingGrowth: [...saplingGrowth.entries()].filter(
             ([key]) => world.get(key) === "sapling",
           ),
@@ -3889,6 +3923,48 @@ export default function VoxelWorld({
           blockDrops: [...blockDropRecords.values()],
         }),
       );
+    };
+
+    let waterFlowTimer = 0;
+    const updateWaterFlow = (delta: number) => {
+      waterFlowTimer += delta;
+      if (waterFlowTimer < 0.28 || waterFlowLevels.size === 0) return;
+      waterFlowTimer = 0;
+      const pending = new Map<string, { x: number; y: number; z: number; level: number }>();
+
+      for (const [key, level] of waterFlowLevels) {
+        if (world.get(key) !== "water") continue;
+        const cell = { ...parseBlockKey(key), level };
+        for (const next of getNextWaterFlowCells(
+          cell,
+          (x, y, z) => world.has(blockKey(x, y, z)),
+          WORLD_BOTTOM_Y + 1,
+        )) {
+          if (
+            next.x < WORLD_MIN ||
+            next.x > WORLD_MAX ||
+            next.z < WORLD_MIN ||
+            next.z > WORLD_MAX ||
+            next.y > 40
+          )
+            continue;
+          const nextKey = blockKey(next.x, next.y, next.z);
+          const queued = pending.get(nextKey);
+          if (!queued || next.level < queued.level) pending.set(nextKey, next);
+        }
+      }
+
+      if (pending.size === 0) return;
+      for (const [key, next] of pending) {
+        if (world.has(key)) continue;
+        world.set(key, "water");
+        added.set(key, "water");
+        waterFlowLevels.set(key, next.level);
+        removed.delete(key);
+        indexRuntimeBlock(key, next.x, next.z);
+      }
+      rebuildChangedVoxelMeshes();
+      saveEdits();
     };
 
     const isSolid = (kind?: TerrainBlockKind) =>
@@ -4762,6 +4838,7 @@ export default function VoxelWorld({
       indexRuntimeBlock(key, x, z);
       added.set(key, kind);
       if (kind === "sapling") saplingGrowth.set(key, 0);
+      if (kind === "water") waterFlowLevels.set(key, 0);
       removed.delete(key);
       saveEdits();
       rebuildChangedVoxelMeshes();
@@ -5245,6 +5322,13 @@ export default function VoxelWorld({
       sky.position.copy(camera.position);
       starField.position.copy(camera.position);
       const elapsed = clock.elapsedTime;
+      const waterPulse = Math.sin(elapsed * 1.7) * 0.5 + 0.5;
+      waterMaterial.opacity = 0.68 + waterPulse * 0.07;
+      waterMaterial.color.setHSL(
+        0.55 + Math.sin(elapsed * 0.55) * 0.008,
+        0.58,
+        0.51 + waterPulse * 0.035,
+      );
       const activeWeapon = equippedWeaponRef.current;
       (Object.keys(weaponVisuals) as PlayerWeaponKind[]).forEach((kind) => {
         weaponVisuals[kind].visible = kind === activeWeapon;
@@ -5283,6 +5367,7 @@ export default function VoxelWorld({
           cloud.group.position.x = WORLD_MIN - 35;
       });
       if (activeRef.current && !pausedRef.current) {
+        updateWaterFlow(delta);
         if (timeRef.current === "day") {
           wheatEntities.forEach((wheat) => {
             wheat.age = Math.min(1, wheat.age + delta / 55);
