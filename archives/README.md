@@ -11,3 +11,7 @@ d8fdd1abaac85d28dea33333be3680fb53020987f11853f7dcbe1a74e062cd5e
 ```
 
 Extract the archive and follow `CURRENT_VERSION_ARCHIVE.md`. Do not rebuild the recovered checkout before preserving `dist/`, because the tracked source history does not contain every recovered feature.
+
+## Render deployment
+
+The repository includes `render.yaml`. Its build command extracts this checkpoint and installs dependencies without running `npm run build`, so the recovered features remain intact.

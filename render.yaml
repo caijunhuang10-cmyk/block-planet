@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: block-planet-caijunhuang
+    runtime: node
+    plan: free
+    buildCommand: tar -xzf archives/block-planet-recovered-2026-09-04.tar.gz --strip-components=1 && npm ci
+    startCommand: ./node_modules/.bin/vinext start --port $PORT --hostname 0.0.0.0
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 22.19.0
